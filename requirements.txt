@@ -1,0 +1,16 @@
+# Pinned for Python 3.11 / 3.12 ONLY. See SETUP.md — 3.13+ has no dlib wheels
+# and no pkg_resources, which is what face_recognition_models needs to import.
+
+# Restores pkg_resources, which Python 3.12+ no longer ships and which
+# face_recognition_models/__init__.py imports at module load.
+setuptools>=68,<81
+
+# Prebuilt dlib. The plain `dlib` package compiles from source and wants
+# CMake + Visual Studio Build Tools; this one is the same library as a wheel.
+dlib-bin==19.24.6
+
+face_recognition_models==0.3.0
+face_recognition==1.3.0
+
+opencv-python==4.10.0.84
+numpy<2
