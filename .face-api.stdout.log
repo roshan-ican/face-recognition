@@ -1,0 +1,35 @@
+INFO:     127.0.0.1:56955 - "GET /health HTTP/1.1" 200 OK
+Loaded cached encodings for roshanINFO:     127.0.0.1:56103 - "GET /preview HTTP/1.1" 204 No Content
+
+INFO:     127.0.0.1:56103 - "GET /preview HTTP/1.1" 204 No Content
+INFO:     127.0.0.1:56103 - "GET /preview HTTP/1.1" 204 No Content
+Camera 0 opened via MSMF at 640x480
+INFO:     127.0.0.1:56103 - "GET /preview HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56103 - "GET /preview HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56103 - "GET /preview HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56103 - "GET /preview HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56103 - "GET /preview HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56103 - "GET /preview HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56103 - "GET /preview HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56103 - "GET /preview HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56103 - "GET /preview HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56103 - "GET /preview HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56103 - "GET /preview HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56103 - "GET /preview HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56103 - "GET /preview HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56103 - "GET /preview HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56103 - "GET /preview HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56103 - "GET /preview HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56103 - "GET /preview HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56103 - "GET /preview HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56103 - "GET /preview HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56103 - "GET /preview HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56103 - "GET /preview HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56103 - "GET /preview HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56103 - "GET /preview HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56103 - "GET /preview HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56103 - "GET /preview HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56103 - "GET /preview HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56103 - "GET /preview HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56103 - "GET /preview HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56101 - "POST /recognize HTTP/1.1" 200 OK

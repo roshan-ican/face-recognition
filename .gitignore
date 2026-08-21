@@ -1,5 +1,9 @@
 .venv/
+.venv-broken-*/
+.env
 __pycache__/
+.pytest_cache/
 *.pyc
 *.bak
 snapshot.jpg
+.*_encodings.npz
