@@ -1,4 +1,5 @@
-"""One small API that recognizes Roshan through the Iriun camera."""
+"""One small API that recognizes  through the Iriun camera."""
+
 import hashlib
 import threading
 import time
@@ -6,11 +7,12 @@ from enum import StrEnum, auto
 from functools import lru_cache
 from pathlib import Path
 from typing import Annotated, Any
+from uuid import uuid4
 
 import cv2
 import face_recognition
 import numpy as np
-from fastapi import Depends, FastAPI, HTTPException, Request, Response
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -19,12 +21,12 @@ from face_service import __version__
 from face_service.config import Settings, get_settings
 from face_service.services.recognition import FaceImageError, FaceRecognitionService
 
-
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DOWNSCALE = 0.5
 PROCESS_EVERY = 2
 ENCODER_MODEL = "large"
 PREVIEW_INTERVAL_SECONDS = 0.12
+MAX_JPEG_BYTES = 1_500_000
 
 recognizer = FaceRecognitionService(encoder_model=ENCODER_MODEL, enrol_jitters=10)
 recognition_lock = threading.Lock()
@@ -40,6 +42,11 @@ class RecognitionStatus(StrEnum):
     PROCESSING_ERROR = auto()
 
 
+class RegistrationView(StrEnum):
+    FRONT = auto()
+    SIDE = auto()
+
+
 class RecognitionResponse(BaseModel):
     """The complete answer returned to the calling software."""
 
@@ -52,6 +59,30 @@ class RecognitionResponse(BaseModel):
     camera_index: int = Field(alias="cameraIndex")
     frames_scanned: int = Field(alias="framesScanned", ge=0)
     message: str
+
+
+class RegistrationResponse(BaseModel):
+    """The result of storing one reference view for a person."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    person: str
+    view: RegistrationView
+    stored_as: str = Field(alias="storedAs")
+    captured_views: list[RegistrationView] = Field(alias="capturedViews")
+    complete: bool
+    message: str
+
+
+class RegistrationStatusResponse(BaseModel):
+    """Whether the session UI should register or verify this person."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    person: str
+    registered: bool
+    captured_views: list[RegistrationView] = Field(alias="capturedViews")
+    reference_count: int = Field(alias="referenceCount", ge=0)
 
 
 def publish_preview(frame: Any | None) -> None:
@@ -87,6 +118,60 @@ def reference_fingerprint(image_paths: tuple[Path, ...]) -> str:
     return digest.hexdigest()
 
 
+def validate_person_name(person_name: str) -> str:
+    """Allow a readable folder name without permitting path traversal."""
+
+    cleaned = person_name.strip()
+    if not cleaned or len(cleaned) > 64:
+        raise ValueError("Person name must contain between 1 and 64 characters")
+    if not any(character.isalnum() for character in cleaned):
+        raise ValueError("Person name must contain a letter or number")
+    if any(
+        not (character.isalnum() or character in {" ", "_", "-"})
+        for character in cleaned
+    ):
+        raise ValueError(
+            "Person name may contain only letters, numbers, spaces, _ or -"
+        )
+    return cleaned
+
+
+def registration_status(person_name: str) -> RegistrationStatusResponse:
+    person_directory = PROJECT_ROOT / "known_faces" / person_name
+    if not person_directory.is_dir():
+        return RegistrationStatusResponse(
+            person=person_name,
+            registered=False,
+            capturedViews=[],
+            referenceCount=0,
+        )
+
+    image_paths = [
+        image_path
+        for image_path in person_directory.iterdir()
+        if image_path.is_file()
+        and image_path.suffix.lower() in {".jpg", ".jpeg", ".png"}
+    ]
+    captured_views = [
+        view
+        for view in RegistrationView
+        if any(
+            image_path.name.startswith(f"{view.value}-") for image_path in image_paths
+        )
+    ]
+    labelled_names = tuple(f"{view.value}-" for view in RegistrationView)
+    has_legacy_references = any(
+        not image_path.name.startswith(labelled_names) for image_path in image_paths
+    )
+    registered = has_legacy_references or len(captured_views) == len(RegistrationView)
+    return RegistrationStatusResponse(
+        person=person_name,
+        registered=registered,
+        capturedViews=captured_views,
+        referenceCount=len(image_paths),
+    )
+
+
 @lru_cache
 def load_reference_encodings(person_name: str) -> tuple[Any, ...]:
     """Load and encode known_faces/<person_name> once per server process."""
@@ -94,20 +179,20 @@ def load_reference_encodings(person_name: str) -> tuple[Any, ...]:
     person_directory = PROJECT_ROOT / "known_faces" / person_name
     if not person_directory.is_dir():
         raise RuntimeError(f"Reference folder does not exist: {person_directory}")
-    
+
     image_paths = tuple(
         image_path
         for image_path in sorted(person_directory.iterdir())
         if image_path.is_file()
         and image_path.suffix.lower() in {".jpg", ".jpeg", ".png"}
     )
-    
+
     if not image_paths:
         raise RuntimeError(f"No references photos found for {person_name}")
-    
+
     fingerprint = reference_fingerprint(image_paths)
     cache_path = PROJECT_ROOT / f".{person_name}_encodings.npz"
-    
+
     if cache_path.exists():
         try:
             with np.load(cache_path, allow_pickle=False) as cache:
@@ -169,8 +254,45 @@ def result(
     )
 
 
+def register_face_bytes(
+    image_bytes: bytes,
+    person_name: str,
+    view: RegistrationView,
+) -> RegistrationResponse:
+    """Validate and store one front/side reference JPEG."""
+
+    recognizer.encode_one(image_bytes, enrolment=True)
+
+    person_directory = PROJECT_ROOT / "known_faces" / person_name
+    person_directory.mkdir(parents=True, exist_ok=True)
+    filename = f"{view.value}-{uuid4().hex[:12]}.jpg"
+    (person_directory / filename).write_bytes(image_bytes)
+
+    # A running process may already have cached this person's old references.
+    load_reference_encodings.cache_clear()
+
+    captured_views = [
+        candidate
+        for candidate in RegistrationView
+        if any(person_directory.glob(f"{candidate.value}-*.jpg"))
+    ]
+    complete = len(captured_views) == len(RegistrationView)
+    return RegistrationResponse(
+        person=person_name,
+        view=view,
+        storedAs=filename,
+        capturedViews=captured_views,
+        complete=complete,
+        message=(
+            f"{person_name} now has front and side reference photos"
+            if complete
+            else f"Stored {view.value} view; the other view is still required"
+        ),
+    )
+
+
 def scan_camera_for_person(settings: Settings) -> RecognitionResponse:
-    """Open Iriun, scan briefly for Roshan, and always release the camera."""
+    """Open Iriun, scan briefly for , and always release the camera."""
 
     publish_preview(None)
 
@@ -344,9 +466,9 @@ def recognize_frame_bytes(
 
 
 app = FastAPI(
-    title="Roshan Face Recognition API",
+    title=" Face Recognition API",
     version=__version__,
-    description="A local learning API that approves only Roshan.",
+    description="A local learning API that approves only .",
 )
 
 
@@ -367,7 +489,7 @@ def health(settings: Annotated[Settings, Depends(get_settings)]) -> dict[str, ob
 async def recognize(
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> RecognitionResponse:
-    """Open the camera, look for Roshan, close it, and return the answer."""
+    """Open the camera, look for , close it, and return the answer."""
 
     if not recognition_lock.acquire(blocking=False):
         return result(
@@ -391,8 +513,16 @@ async def recognize(
 async def recognize_frame(
     request: Request,
     settings: Annotated[Settings, Depends(get_settings)],
+    person_name: Annotated[str | None, Query(alias="personName")] = None,
 ) -> RecognitionResponse:
     """Recognize one JPEG held in memory; never save the frame to disk."""
+
+    if person_name is not None:
+        try:
+            safe_person_name = validate_person_name(person_name)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        settings = settings.model_copy(update={"person_name": safe_person_name})
 
     if request.headers.get("content-type", "").split(";", 1)[0] != "image/jpeg":
         raise HTTPException(status_code=415, detail="A JPEG camera frame is required")
@@ -400,7 +530,7 @@ async def recognize_frame(
     image_bytes = await request.body()
     if not image_bytes:
         raise HTTPException(status_code=400, detail="Camera frame is empty")
-    if len(image_bytes) > 1_500_000:
+    if len(image_bytes) > MAX_JPEG_BYTES:
         raise HTTPException(status_code=413, detail="Camera frame is too large")
 
     if not recognition_lock.acquire(blocking=False):
@@ -413,6 +543,66 @@ async def recognize_frame(
 
     try:
         return await run_in_threadpool(recognize_frame_bytes, image_bytes, settings)
+    finally:
+        recognition_lock.release()
+
+
+@app.get(
+    "/face-registration/{person_name}",
+    response_model=RegistrationStatusResponse,
+    tags=["registration"],
+)
+def get_face_registration(person_name: str) -> RegistrationStatusResponse:
+    """Tell the session UI whether to show Register Face or Verify Face."""
+
+    try:
+        safe_person_name = validate_person_name(person_name)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return registration_status(safe_person_name)
+
+
+@app.post(
+    "/register-face/{person_name}/{view}",
+    response_model=RegistrationResponse,
+    tags=["registration"],
+)
+async def register_face(
+    person_name: str,
+    view: RegistrationView,
+    request: Request,
+) -> RegistrationResponse:
+    """Register one front or side JPEG for the admin-provided person name."""
+
+    try:
+        safe_person_name = validate_person_name(person_name)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    if request.headers.get("content-type", "").split(";", 1)[0] != "image/jpeg":
+        raise HTTPException(
+            status_code=415, detail="A JPEG reference photo is required"
+        )
+
+    image_bytes = await request.body()
+    if not image_bytes:
+        raise HTTPException(status_code=400, detail="Reference photo is empty")
+    if len(image_bytes) > MAX_JPEG_BYTES:
+        raise HTTPException(status_code=413, detail="Reference photo is too large")
+
+    if not recognition_lock.acquire(blocking=False):
+        raise HTTPException(status_code=409, detail="Recognition is currently running")
+
+    try:
+        try:
+            return await run_in_threadpool(
+                register_face_bytes,
+                image_bytes,
+                safe_person_name,
+                view,
+            )
+        except FaceImageError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
     finally:
         recognition_lock.release()
 

@@ -16,8 +16,8 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    service_name: str = "Roshan Face Recognition API"
-    person_name: str = "roshan"
+    service_name: str = " Face Recognition API"
+    person_name: str = ""
     camera_index: int = Field(default=0, ge=0)
     scan_timeout_seconds: float = Field(default=5.0, gt=0, le=30)
     match_tolerance: float = Field(default=0.6, gt=0, lt=1)

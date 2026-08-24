@@ -1,4 +1,3 @@
-"""Start the Roshan-only face-recognition API."""
 
 import uvicorn
 

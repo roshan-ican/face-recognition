@@ -1,11 +1,11 @@
-# Roshan face-recognition API
+# face-recognition API
 
 This is one local demo service. The caller sends `POST /recognize`; the API
-opens Iriun camera 0, scans for Roshan for up to five seconds, releases the
+opens Iriun camera 0, scans for for up to five seconds, releases the
 camera, and returns the answer in the same HTTP response.
 
 There is no roster upload, database, API key, job queue, or webhook callback.
-Reference photos come from `known_faces/roshan/` and are encoded once when the
+Reference photos come from `known_faces//` and are encoded once when the
 first recognition request arrives.
 
 ## Run
@@ -35,6 +35,31 @@ Trigger live recognition with:
 curl.exe -X POST http://127.0.0.1:8000/recognize
 ```
 
+Register a person by sending one straight/front JPEG and one angled/side JPEG.
+The admin-provided name becomes a folder under `known_faces/`:
+
+```powershell
+curl.exe -X POST -H "Content-Type: image/jpeg" --data-binary "@front.jpg" http://127.0.0.1:8000/register-face/Ahmed/front
+curl.exe -X POST -H "Content-Type: image/jpeg" --data-binary "@side.jpg" http://127.0.0.1:8000/register-face/Ahmed/side
+```
+
+Each photo must contain exactly one face. A side photo should be angled enough
+to show the face clearly rather than a full 90-degree profile.
+
+The session UI can decide which action to show with:
+
+```powershell
+curl.exe http://127.0.0.1:8000/face-registration/Ahmed
+```
+
+Show **Verify Face** when `registered` is `true`; otherwise show
+**Register Face**. Existing folders such as `known_faces//` remain valid.
+When verifying a registered session shooter, include the same name:
+
+```powershell
+curl.exe -X POST -H "Content-Type: image/jpeg" --data-binary "@frame.jpg" "http://127.0.0.1:8000/recognize-frame?personName=Ahmed"
+```
+
 While recognition is running, the latest in-memory camera frame is available
 as a JPEG from `GET /preview`. It returns `204` before the first frame. The
 preview reuses recognition's camera frames, never opens a second camera, and is
@@ -46,11 +71,11 @@ Example match response:
 {
   "approved": true,
   "status": "matched",
-  "person": "roshan",
+  "person": "",
   "distance": 0.317,
   "cameraIndex": 0,
   "framesScanned": 2,
-  "message": "roshan recognized"
+  "message": " recognized"
 }
 ```
 

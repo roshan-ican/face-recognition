@@ -12,18 +12,6 @@ class FaceImageError(ValueError):
     """Base class for an image that cannot provide one usable face."""
 
 
-class InvalidImage(FaceImageError):
-    """The supplied bytes are not a decodable image."""
-
-
-class NoFaceDetected(FaceImageError):
-    """No face was found in the image."""
-
-
-class MultipleFacesDetected(FaceImageError):
-    """More than one face was found where exactly one was required."""
-
-
 class FaceRecognitionService:
     """Encode images and compare encodings using the existing dlib stack."""
 
@@ -48,7 +36,7 @@ class FaceRecognitionService:
         encoded = np.frombuffer(image_bytes, dtype=np.uint8)
         bgr = cv2.imdecode(encoded, cv2.IMREAD_COLOR)
         if bgr is None:
-            raise InvalidImage("The uploaded file is not a readable image")
+            raise FaceImageError("The uploaded file is not a readable image")
         return np.ascontiguousarray(cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB))
 
     def encode_faces(self, image_bytes: bytes, *, enrolment: bool = False) -> list[Any]:
@@ -56,7 +44,13 @@ class FaceRecognitionService:
 
         _cv2, face_recognition, _np = self._libraries()
         rgb = self.decode_rgb(image_bytes)
-        boxes = face_recognition.face_locations(rgb)
+        # Registration happens only twice per shooter, so spend a little more
+        # CPU here to find smaller/softer camera faces. Live verification keeps
+        # the normal single upsample for speed.
+        boxes = face_recognition.face_locations(
+            rgb,
+            number_of_times_to_upsample=2 if enrolment else 1,
+        )
         jitters = self.enrol_jitters if enrolment else 1
         return list(
             face_recognition.face_encodings(
@@ -72,9 +66,9 @@ class FaceRecognitionService:
 
         encodings = self.encode_faces(image_bytes, enrolment=enrolment)
         if not encodings:
-            raise NoFaceDetected("No face was detected in the image")
+            raise FaceImageError("No face was detected in the image")
         if len(encodings) > 1:
-            raise MultipleFacesDetected(
+            raise FaceImageError(
                 f"Expected one face but detected {len(encodings)}"
             )
         return encodings[0]
